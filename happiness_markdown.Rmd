@@ -1,0 +1,349 @@
+---
+title: "happiness_project"
+output: pdf_document
+date: "2025-12-20"
+---
+
+```{r dataset}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+setwd("/Users/ilariamato/Desktop/DATA VIS")
+a_cc <- read_excel("data_happiness.xlsx")
+```
+
+```{r  Rename Variables with clarification}
+a <- a_cc %>%
+  rename(
+    `GDP per capita` = `Explained by: Log GDP per capita`,
+    `Social Support` = `Explained by: Social support`,
+    `Healthy life expectancy` = `Explained by: Healthy life expectancy`,
+    `Freedom to make life choices` = `Explained by: Freedom to make life choices`,
+    Generosity = `Explained by: Generosity`,
+    `Perceptions of corruption` = `Explained by: Perceptions of corruption`,
+    Happiness = `Life evaluation (3-year average)`,
+    Country = `Country name`
+  )
+
+```
+
+
+```{r  Missing values}
+missing_summary <- data.frame(
+  Variable = names(a),
+  Missing = colSums(is.na(a))
+)
+
+# Number of missing values
+missing_summary <- missing_summary[order(-missing_summary$Missing), ]
+print(missing_summary)
+
+# Visualization of Missing
+barplot(missing_summary$Missing, 
+        names.arg = missing_summary$Variable,
+        las = 2,  # Ruota etichette
+        cex.names = 0.7,  # Dimensione nomi
+        main = "Missing Values per Variabile",
+        ylab = "Numero di Missing",
+        col = "steelblue")
+
+#List of missing 
+vars_to_impute <- c(
+  "Dystopia + residual",
+  "Healthy life expectancy",           
+  "Freedom to make life choices",     
+  "Perceptions of corruption",         
+  "GDP per capita",                   
+  "Social Support",                   
+  "Generosity"
+)
+
+#Imputazione con la media attraverso un ciclo FOR
+for (var in vars_to_impute) {
+  # Mean calculation (without NA)
+  mean_value <- mean(a[[var]], na.rm = TRUE)
+  
+  # Put the mean instead of NA
+  a[[var]][is.na(a[[var]])] <- mean_value
+  
+  # Info
+  cat(sprintf("Imputato '%s' con media = %.4f\n", var, mean_value))
+}
+
+# to see if it worked
+colSums(is.na(a))
+```
+
+```{r first: How has global happiness changed globally from 2019 to 2024?}
+# Mean per year
+global_trend <- a %>%
+  group_by(Year) %>%
+  summarise(
+    Mean_Happiness = mean(Happiness, na.rm = TRUE),           
+    Median_Happiness = median(Happiness, na.rm = TRUE),       
+    SD_Happiness = sd(Happiness, na.rm = TRUE),               
+    N_Countries = n()
+  )
+print(global_trend)
+
+library(ggplot2)
+# Temporal trend
+ggplot(global_trend, aes(x = Year, y = Mean_Happiness)) +
+  geom_line(size = 1.5, color = "steelblue") +
+  geom_point(size = 3, color = "darkblue") +
+  labs(title = "Evolution of Global Happiness (2019-2024)",
+       y = "Average Happiness Score",
+       x = "Year") +
+  theme_minimal()
+
+```
+
+```{r  second: How has global happiness changed by continent from 2019 to 2024?}
+# Gruoping by continent
+continent_mapping <- data.frame(
+  Country = c(
+    # Europa
+    "Finland", "Denmark", "Iceland", "Sweden", "Norway", "Netherlands", 
+    "Switzerland", "Luxembourg", "Austria", "Germany", "Belgium", "United Kingdom",
+    "Ireland", "France", "Spain", "Italy", "Czech Republic", "Poland",
+    
+    # Asia
+    "Israel", "United Arab Emirates", "Singapore", "Taiwan Province of China",
+    "Japan", "South Korea", "Thailand", "Philippines", "Vietnam", "China",
+    "India", "Pakistan", "Bangladesh", "Indonesia", "Malaysia",
+    
+    # Americas
+    "Canada", "United States", "Mexico", "Brazil", "Argentina", "Chile",
+    "Costa Rica", "Uruguay", "Panama", "Colombia", "Guatemala",
+    
+    # Oceania
+    "Australia", "New Zealand",
+    
+    # Africa
+    "Libya", "South Africa", "Morocco", "Algeria", "Egypt", "Nigeria",
+    "Kenya", "Ghana", "Tanzania", "Uganda", "Zimbabwe"
+  ),
+  Continent = c(
+    rep("Europe", 18),
+    rep("Asia", 15),
+    rep("Americas", 11),
+    rep("Oceania", 2),
+    rep("Africa", 11)
+  )
+)
+# i have the most populous countries (capturing the majority of the world's population).
+# i have countries with different GDPs (poor, middle-income, rich).
+# i cover all macro-regions (Northern/Southern Europe, East/West Asia, etc.).
+# Including both happy and unhappy countries.
+
+# MERGE
+a_with_continent <- a %>%
+  left_join(continent_mapping, by = "Country") 
+
+# Mean per year and continet
+continent_trend <- a_with_continent %>%
+  filter(!is.na(Continent)) %>%
+  group_by(Year, Continent) %>%
+  summarise(
+    Mean_Happiness = mean(Happiness, na.rm = TRUE), 
+    .groups = "drop"
+  )
+
+# viz continent mean
+continent_summary <- a_with_continent %>%
+  filter(!is.na(Continent)) %>%
+  group_by(Year, Continent) %>%
+  summarise(
+    Mean_Happiness = mean(Happiness, na.rm = TRUE),
+    Median_Happiness = median(Happiness, na.rm = TRUE),
+    SD_Happiness = sd(Happiness, na.rm = TRUE),
+    N_Countries = n(),
+    .groups = "drop"
+  )
+print(continent_summary, n = Inf)
+
+# ggplot for the means of continents
+ggplot(continent_trend, aes(x = Year, y = Mean_Happiness, 
+                            color = Continent, group = Continent)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c(
+    "Europe" = "#1f77b4",
+    "Americas" = "#ff7f0e", 
+    "Asia" = "#2ca02c",
+    "Oceania" = "#d62728",
+    "Africa" = "#9467bd"
+  )) +
+  labs(
+    title = "Evolution of Happiness by Continent (2019-2024)",
+    subtitle = "Comparison of regional trends",
+    y = "Average Happiness Score",
+    x = "Year",
+    color = "Continent"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "right"
+  )
+
+```
+
+```{r  third: Which countries analyzed have always been at the top of the rankings and which have always been at the bottom from 2019 to 2024?}
+
+library(dplyr)
+
+# ALWAYS IN TOP (2019-2024)
+# top in every year
+top_10_by_year <- a %>%
+  group_by(Year) %>%
+  arrange(Rank) %>%
+  slice(1:10) %>%
+  select(Year, Country, Rank)  
+
+# How many times the country is in top 10
+top_10_frequency <- top_10_by_year %>%
+  group_by(Country) %>%  # ⭐ CAMBIATO
+  summarise(
+    Times_in_Top10 = n(),
+    Years = paste(Year, collapse = ", ")
+  ) %>%
+  arrange(desc(Times_in_Top10))
+print(top_10_frequency)
+
+# Countries in top 10 for 6 years
+always_top_10 <- top_10_frequency %>%
+  filter(Times_in_Top10 == 6)
+print(always_top_10)
+
+# ALWAYS IN BOTTOM (2019-2024)
+# bottom in every year
+bottom_10_by_year <- a %>%
+  group_by(Year) %>%
+  arrange(desc(Rank)) %>%
+  slice(1:10) %>%
+  select(Year, Country, Rank)  
+
+#  How many times the country is in bottom 10
+bottom_10_frequency <- bottom_10_by_year %>%
+  group_by(Country) %>%  
+  summarise(
+    Times_in_Bottom10 = n(),
+    Years = paste(Year, collapse = ", ")
+  ) %>%
+  arrange(desc(Times_in_Bottom10))
+print(bottom_10_frequency)
+
+# Countries in top 10 for 6 years
+always_bottom_10 <- bottom_10_frequency %>%
+  filter(Times_in_Bottom10 == 6)
+print(always_bottom_10)
+
+```
+
+```{r  forth: What is the GAP, or happiness gap, between the countries that consistently are top and bottom between 2019 and 2024?}
+# Top vs Bottom for every year 
+top_bottom_trend <- a %>%
+  group_by(Year) %>%
+  arrange(Rank) %>%
+  mutate(
+    Category = case_when(
+      Rank <= 10 ~ "Top 10",
+      Rank >= max(Rank) - 9 ~ "Bottom 10",
+      TRUE ~ "Middle"
+    )
+  ) %>%
+  filter(Category != "Middle") %>%
+  group_by(Year, Category) %>%
+  summarise(
+    Mean_Happiness = mean(Happiness, na.rm = TRUE),  # ⭐ CAMBIATO
+    .groups = "drop"
+  )
+
+# GAP for every year
+gap_trend <- top_bottom_trend %>%
+  pivot_wider(names_from = Category, values_from = Mean_Happiness) %>%
+  mutate(Gap = `Top 10` - `Bottom 10`)
+print(gap_trend)
+
+# gap_change (year-over-year changes)
+gap_change <- data.frame(
+  Period = c("2019-2020", "2020-2021", "2021-2022", "2022-2023", "2023-2024"),
+  Change = c(
+    gap_trend$Gap[2] - gap_trend$Gap[1],  # 2020 - 2019
+    gap_trend$Gap[3] - gap_trend$Gap[2],  # 2021 - 2020
+    gap_trend$Gap[4] - gap_trend$Gap[3],  # 2022 - 2021
+    gap_trend$Gap[5] - gap_trend$Gap[4],  # 2023 - 2022
+    gap_trend$Gap[6] - gap_trend$Gap[5]   # 2024 - 2023
+  )
+)
+print(gap_change)
+
+# Variation of gap ggplot
+ggplot(gap_change, aes(x = Period, y = Change)) +
+  geom_col(aes(fill = Change > 0)) +
+  scale_fill_manual(
+    values = c("TRUE" = "#BD0026", "FALSE" = "#008000"),
+    labels = c("Gap decrease ↓", "Gap increase ↑")
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    title = "Year-over-Year Change in the Happiness Gap (2019-2024)",
+    y = "Gap variation",
+    x = "Year",
+    fill = ""
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(size = 14, face = "bold")
+  )
+
+
+```
+
+```{r  fifth: What are the global motivations for being happy and how are they related to happiness? How it changed over time? Are there differences between continents?}
+
+correlation_data <- a %>%
+  select(
+    Happiness,
+    `GDP per capita`,
+    `Social Support`,
+    `Healthy life expectancy`,
+    `Freedom to make life choices`,
+    Generosity,
+    `Perceptions of corruption`
+  )
+
+# correlation matrix
+cor_matrix <- cor(correlation_data, use = "complete.obs")
+print(round(cor_matrix, 3))
+
+# viz
+library(corrplot)
+corrplot(cor_matrix, 
+         method = "color",
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         tl.cex = 0.8,  # ⭐ Riduci dimensione per nomi lunghi
+         col = colorRampPalette(c(
+           "#800026",
+           "#BD0026",
+           "#E31A1C",
+           "#F03B20",
+           "#FC6E4A",
+           "#FD8D3C",
+           "#FEB24C",
+           "#FED976",
+           "#FEEC8C",
+           "#FFFFB2",
+           "#FFFFE0"
+         ))(200),
+         title = "Correlations between Happiness Factors",
+         mar = c(0, 0, 2, 0),
+         addgrid.col = "gray90")
+
+```
